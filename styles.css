@@ -1,0 +1,45 @@
+/* common.css */
+
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@700&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap');
+
+/* Raleway Font */
+.raleway {
+    font-family: "Raleway", serif;
+    font-optical-sizing: auto;
+    font-weight: 700;
+    font-style: normal;
+}
+
+body.raleway {
+    background-color: #f9f9f9;
+}
+
+/* Sidebar */
+.sidebar {
+    background: linear-gradient(to bottom, #1ABC9C, #148F77);
+    color: white;
+    height: 100vh;
+    padding: 20px;
+}
+
+.sidebar a {
+    color: white;
+    text-decoration: none;
+    display: block;
+    padding: 10px;
+    border-radius: 5px;
+    margin-bottom: 10px;
+}
+
+.sidebar a.active,
+.sidebar a:hover {
+    background-color: #28c6a7;
+}
+
+/* Card */
+.card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}

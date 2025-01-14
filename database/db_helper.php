@@ -1,6 +1,4 @@
 <?php
-// db_helper.php
-
 function executeQuery($pdo, $query, $params = []) {
     try {
         $stmt = $pdo->prepare($query);

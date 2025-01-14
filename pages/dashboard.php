@@ -3,8 +3,8 @@
 session_start();
 
 // Include the database connection and db_helper file
-include('db_connection.php');
-include('db_helper.php');
+include('../database/db_connection.php');
+include('../database/db_helper.php');
 
 // Check if the user is logged in
 if (!isset($_SESSION['user_id'])) {
@@ -51,7 +51,7 @@ $expense_data = fetchData($pdo, $query_expenses_category, $params_expenses_categ
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="../assets/css/styles.css">
     <style>
         /* Dashboard Header */
         .dashboard-header {

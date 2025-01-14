@@ -2,7 +2,7 @@
 session_start(); // Start the session to manage logged-in users
 
 // Include the database connection
-require 'db_connection.php'; // Adjust the path as needed
+require '../database/db_connection.php'; // Adjust the path as needed
 
 if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST') {
   $email = filter_input(type: INPUT_POST, var_name: 'email', filter: FILTER_SANITIZE_EMAIL);
@@ -48,7 +48,7 @@ if (isset($_SERVER['REQUEST_METHOD']) && $_SERVER['REQUEST_METHOD'] === 'POST') 
   <title>Login</title>
   <link rel='stylesheet' href='https://use.fontawesome.com/releases/v5.2.0/css/all.css'>
   <link rel='stylesheet' href='https://use.fontawesome.com/releases/v5.2.0/css/fontawesome.css'>
-  <link rel="stylesheet" href="./login.css">
+  <link rel="stylesheet" href="../assets/css/login.css">
 </head>
 
 <body>

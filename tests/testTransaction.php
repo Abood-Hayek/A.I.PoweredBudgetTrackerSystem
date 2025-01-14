@@ -1,49 +1,72 @@
 <?php
-include('db_connection.php');
-include('db_helper.php');
-include('handleTransaction.php');
+// Include the database connection file
+include('\include\db_connection.php');
 
+// Start session to check if the user is logged in
 session_start();
 
+// If not logged in, redirect to login page
 if (!isset($_SESSION['user_id'])) {
     header("Location: login.php");
     exit();
 }
 
-$user_id = $_SESSION['user_id'];
-
+// Handle form submissions for adding income and expenses
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if (isset($_POST['undo'])) {
-        $result = handleUndo($pdo, $user_id);
-        if ($result === true) {
-            header("Location: transaction.php");
-            exit();
-        } else {
-            echo $result;  // Show error if any
-        }
-    } else {
-        // Handle income/expense form submission
-        $amount = filter_var($_POST['amount'], FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
-        $category = filter_var($_POST['category'], FILTER_SANITIZE_STRING);
-        $type = $_POST['type'];
+    // Sanitize the input values
+    $amount = filter_var($_POST['amount'], FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
+    $category = filter_var($_POST['category'], FILTER_SANITIZE_STRING);
+    $type = $_POST['type']; // Income or Expense
+    $user_id = $_SESSION['user_id']; // Get the user ID from session
 
-        if ($amount <= 0) {
-            echo "Error: Amount must be a positive number.";
-            exit();
-        }
-
-        $result = handleTransaction($pdo, $user_id, $type, $category, $amount);
-        if ($result === true) {
-            header("Location: transaction.php");
-            exit();
-        } else {
-            echo $result;  // Show error if any
-        }
+    // Validate that amount is a positive number
+    if ($amount <= 0) {
+        echo "Error: Amount must be a positive number.";
+        exit();
     }
+
+    // Validate type (either 'income' or 'expense')
+    if ($type !== 'income' && $type !== 'expense') {
+        echo "Error: Invalid transaction type.";
+        exit();
+    }
+
+    // Validate category (for income and expense categories)
+    $valid_income_categories = ['employment', 'business', 'investment'];
+    $valid_expense_categories = ['groceries', 'rent', 'clothing', 'food', 'transportation', 'phoneBill', 'selfCare', 'miscellaneous'];
+
+    if ($type == 'income' && !in_array($category, $valid_income_categories)) {
+        echo "Error: Invalid income category.";
+        exit();
+    } elseif ($type == 'expense' && !in_array($category, $valid_expense_categories)) {
+        echo "Error: Invalid expense category.";
+        exit();
+    }
+
+    // Insert the data into the database
+    try {
+        // Prepare the SQL query to include user_id
+        $query = "INSERT INTO transactions (user_id, amount, category, type) VALUES (:user_id, :amount, :category, :type)";
+        $stmt = $pdo->prepare($query);
+
+        // Bind the values to the query parameters
+        $stmt->bindParam(':user_id', $user_id);
+        $stmt->bindParam(':amount', $amount);
+        $stmt->bindParam(':category', $category);
+        $stmt->bindParam(':type', $type);
+
+        // Execute the query
+        $stmt->execute();
+
+        // Redirect or display a success message
+        header("Location: transaction.php");
+        exit();
+    } catch (PDOException $e) {
+        echo "Error: " . $e->getMessage();
+    }
+
+
 }
-
-// The rest of your page logic remains the same for fetching and displaying data
-
 
 // Query the database for income, expenses, and balance
 $user_id = $_SESSION['user_id']; // Get the user ID from session
@@ -107,10 +130,42 @@ foreach ($expense_data as $row) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Transactions</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css">
-    <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* Transaction Header */
+        @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@700&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap');
+
+        .raleway {
+            font-family: "Raleway", serif;
+            font-optical-sizing: auto;
+            font-weight: 700;
+            font-style: normal;
+        }
+
+        body.raleway {
+            background-color: #f9f9f9;
+        }
+
+        .sidebar {
+            background: linear-gradient(to bottom, #1ABC9C, #148F77);
+            color: white;
+            height: 100vh;
+            padding: 20px;
+        }
+
+        .sidebar a {
+            color: white;
+            text-decoration: none;
+            display: block;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+
+        .sidebar a.active,
+        .sidebar a:hover {
+            background-color: #28c6a7;
+        }
+
         .transaction-header {
             display: flex;
             justify-content: space-between;
@@ -119,12 +174,16 @@ foreach ($expense_data as $row) {
             border-bottom: 1px solid #ddd;
         }
 
-        /* Main Content */
+        .card {
+            border: none;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
         .main-content {
             padding: 20px;
         }
 
-        /* Button Container */
         .btn-container {
             display: flex;
             justify-content: flex-end;
@@ -132,7 +191,6 @@ foreach ($expense_data as $row) {
             padding-top: 10px;
         }
 
-        /* Button Styles */
         .btn-income {
             background-color: #1ABC9C;
             color: white;
@@ -151,7 +209,6 @@ foreach ($expense_data as $row) {
             background-color: transparent;
         }
 
-        /* Modal Styles */
         .modal-header {
             background-color: #1ABC9C;
             color: white;
@@ -167,35 +224,17 @@ foreach ($expense_data as $row) {
             color: white;
         }
 
-        /* Remove spin button for number inputs */
         input[type="number"]::-webkit-outer-spin-button,
         input[type="number"]::-webkit-inner-spin-button {
             -webkit-appearance: none;
             margin: 0;
         }
 
-        /* Chart Container */
         .chart-container {
             display: flex;
-            flex-direction: column;
+            justify-content: center;
             align-items: center;
-            justify-content: center;
-            height: 450px;
-            padding: 20px;
-            box-sizing: border-box;
-            overflow: hidden;
-        }
-
-        /* Chart Legend */
-        .chartjs-legend {
-            display: flex !important;
-            justify-content: center;
-            flex-wrap: nowrap;
-            gap: 15px;
-            overflow-x: auto;
-            padding: 10px 0;
-            max-width: 100%;
-            box-sizing: border-box;
+            height: 300px;
         }
     </style>
 </head>
@@ -256,9 +295,7 @@ foreach ($expense_data as $row) {
                     <button class="btn btn-income" data-bs-toggle="modal" data-bs-target="#incomeModal">Income</button>
                     <button class="btn btn-expenses" data-bs-toggle="modal"
                         data-bs-target="#expensesModal">Expenses</button>
-                    <form action="transaction.php" method="POST" style="display:inline;">
-                        <button class="btn btn-undo" name="undo" type="submit">Undo</button>
-                    </form>
+                    <button class="btn btn-undo">Undo</button>
                 </div>
 
                 <!-- Income Modal -->
@@ -338,7 +375,6 @@ foreach ($expense_data as $row) {
 
                 <!-- Chart -->
                 <div class="card chart-container">
-                    <h3>Expenses Chart</h3>
                     <canvas id="myPieChart" width="400" height="400"></canvas>
                 </div>
             </div>
@@ -348,9 +384,10 @@ foreach ($expense_data as $row) {
     <script>
         document.addEventListener("DOMContentLoaded", function () {
             // Data passed from PHP to JavaScript
-            const expenseCategories = <?php echo json_encode($expense_categories); ?>;
-            const expenseTotals = <?php echo json_encode($expense_totals); ?>;
+            const expenseCategories = <?php echo json_encode($expense_categories); ?>; // Expense categories
+            const expenseTotals = <?php echo json_encode($expense_totals); ?>; // Total expenses for each category
 
+            // Check the values in console to ensure data is passed
             console.log("Expense Categories: ", expenseCategories);
             console.log("Expense Totals: ", expenseTotals);
 
@@ -365,34 +402,40 @@ foreach ($expense_data as $row) {
                 miscellaneous: "Misc"
             };
 
+            // Assign colors based on category type (you can customize these colors)
             const expenseColors = {
-                groceries: "#36d555",
-                rent: "#2E8B57",
-                clothing: "#FFD700",
-                food: "#f6472b",
-                transportation: "#060118",
-                phoneBill: "#00BFFF",
-                selfCare: "#c623cd",
-                miscellaneous: "#808080"
+                "groceries": "#36d555",
+                "rent": "#2E8B57",
+                "clothing": "#FFD700",
+                "food": "#f6472b",
+                "transportation": "#060118",
+                "phoneBill": "#00BFFF",
+                "selfCare": "#c623cd",
+                "miscellaneous": "#808080"
             };
 
-            const backgroundColors = expenseCategories.map(category =>
-                expenseColors[category] || "#808080" // Default to gray if not found
-            );
+            // Map expense categories to their corresponding color
+            const backgroundColors = expenseCategories.map(category => {
+                // If the category exists in the expenseColors object, use its color
+                if (expenseColors.hasOwnProperty(category)) {
+                    return expenseColors[category];
+                } else {
+                    // If category not found, log it and use a default color (gray)
+                    console.warn(`Category "${category}" not found, using gray.`);
+                    return "#808080"; // Default to gray if category not found
+                }
+            });
 
-            const friendlyLabels = expenseCategories.map(category =>
-                categoryDisplayNames[category] || category
-            );
-
+            // Chart.js setup for pie chart
             const ctx = document.getElementById('myPieChart').getContext('2d');
             const myPieChart = new Chart(ctx, {
-                type: 'pie',
+                type: 'pie', // Pie chart
                 data: {
-                    labels: friendlyLabels,
+                    labels: expenseCategories, // Categories
                     datasets: [{
                         label: 'Expenses',
-                        data: expenseTotals,
-                        backgroundColor: backgroundColors,
+                        data: expenseTotals, // Total expenses per category
+                        backgroundColor: backgroundColors, // Custom colors
                         borderColor: '#fff',
                         borderWidth: 2
                     }]
@@ -402,45 +445,33 @@ foreach ($expense_data as $row) {
                     plugins: {
                         legend: {
                             position: 'bottom',
-                            align: 'center',
-                            labels: {
-                                boxWidth: 15,
-                                padding: 10,
-                                usePointStyle: true
-                            }
                         },
                         tooltip: {
                             callbacks: {
                                 label: function (tooltipItem) {
-                                    const displayName = categoryDisplayNames[tooltipItem.label] || tooltipItem.label;
+                                    // Use display name for the category
+                                    const category = tooltipItem.label; // Original category name
+                                    const displayName = categoryDisplayNames[category] || category; // Use friendly name or fallback to original
+
+                                    // Ensure raw is a number
                                     const value = parseFloat(tooltipItem.raw);
-                                    return !isNaN(value)
-                                        ? `${displayName}: $${value.toFixed(2)}`
-                                        : `${displayName}: ${tooltipItem.raw}`;
+                                    if (!isNaN(value)) {
+                                        return `${displayName}: $${value.toFixed(2)}`;
+                                    } else {
+                                        return `${displayName}: ${tooltipItem.raw}`;
+                                    }
                                 }
                             }
                         }
                     },
-                    layout: {
-                        padding: { top: 20 }
+                    hover: {
+                        mode: 'nearest',
+                        intersect: true
                     }
                 }
             });
-
-            // Add inline CSS for legend styling
-            const style = document.createElement('style');
-            style.innerHTML = `
-            .chartjs-legend {
-                display: flex !important;
-                justify-content: center;
-                flex-wrap: nowrap;
-                gap: 15px;
-                overflow-x: auto;
-            }`;
-            document.head.appendChild(style);
         });
     </script>
-
 
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>

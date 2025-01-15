@@ -12,6 +12,47 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 
+$sort = $_GET['sort'] ?? '';
+$start_date = $_GET['start_date'] ?? '';
+$end_date = $_GET['end_date'] ?? '';
+
+// Build query for transactions
+$query_transactions = "SELECT * FROM transactions WHERE user_id = :user_id";
+
+// Add date range filter if selected
+if (!empty($start_date) && !empty($end_date)) {
+    $query_transactions .= " AND created_at BETWEEN :start_date AND :end_date";
+}
+
+// Add sorting
+switch ($sort) {
+    case 'amount_asc':
+        $query_transactions .= " ORDER BY amount ASC";
+        break;
+    case 'amount_desc':
+        $query_transactions .= " ORDER BY amount DESC";
+        break;
+    case 'category':
+        $query_transactions .= " ORDER BY category ASC";
+        break;
+    case 'type':
+        $query_transactions .= " ORDER BY type ASC";
+        break;
+    default:
+        $query_transactions .= " ORDER BY created_at DESC";
+}
+
+// Prepare query parameters
+$params_transactions = ['user_id' => $user_id];
+if (!empty($start_date) && !empty($end_date)) {
+    $params_transactions['start_date'] = $start_date;
+    $params_transactions['end_date'] = $end_date;
+}
+
+// Fetch transactions
+$transactions = fetchData($pdo, $query_transactions, $params_transactions);
+
+//Income and expense handling
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['undo'])) {
         $result = handleUndo($pdo, $user_id);
@@ -42,11 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// The rest of your page logic remains the same for fetching and displaying data
-
-
 // Query the database for income, expenses, and balance
-$user_id = $_SESSION['user_id']; // Get the user ID from session
 $income_total = 0;
 $expense_total = 0;
 $balance = 0;
@@ -124,12 +161,59 @@ foreach ($expense_data as $row) {
             padding: 20px;
         }
 
+        /* Chart Container */
+        .chart-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 450px;
+            padding: 20px;
+            margin-top: 20px;
+            margin-bottom: 20px;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .filter-form {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .filter-form label {
+            font-weight: bold;
+        }
+
+        .filter-form select,
+        .filter-form input {
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        .filter-form button {
+            background-color: #1ABC9C;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .filter-form button:hover {
+            background-color: #148F77;
+        }
+
+
         /* Button Container */
         .btn-container {
             display: flex;
             justify-content: flex-end;
             gap: 10px;
-            padding-top: 10px;
+            margin-bottom: 20px;
+
         }
 
         /* Button Styles */
@@ -173,30 +257,6 @@ foreach ($expense_data as $row) {
             -webkit-appearance: none;
             margin: 0;
         }
-
-        /* Chart Container */
-        .chart-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 450px;
-            padding: 20px;
-            box-sizing: border-box;
-            overflow: hidden;
-        }
-
-        /* Chart Legend */
-        .chartjs-legend {
-            display: flex !important;
-            justify-content: center;
-            flex-wrap: nowrap;
-            gap: 15px;
-            overflow-x: auto;
-            padding: 10px 0;
-            max-width: 100%;
-            box-sizing: border-box;
-        }
     </style>
 </head>
 
@@ -217,49 +277,74 @@ foreach ($expense_data as $row) {
                 <a href="logout.php" class="btn btn-outline-primary">Log Out</a>
             </div>
 
+            <div class="card chart-container">
+                <h3>Expenses Chart</h3>
+                <canvas id="myPieChart" width="400" height="400"></canvas>
+            </div>
             <!-- Main Section -->
             <div class="container my-4">
-                <div class="row g-4">
-                    <!-- Total Balance -->
-                    <div class="col-md-4">
-                        <div class="card text-center p-3">
-                            <h5>Total Balance:</h5>
-                            <h3 class="text-success" style="font-family: sans-serif;">
-                                $<?php echo number_format($balance, 2); ?>
-                            </h3>
-                        </div>
-                    </div>
+                <h3 style="text-align: center; margin-top: 10px; margin-bottom: 20px;">Transaction History</h3>
+                <!-- Buttons -->
+                <div class="d-flex justify-content-between align-items-center">
 
-                    <!-- Total Income (Profit) -->
-                    <div class="col-md-4">
-                        <div class="card text-center p-3">
-                            <h5>Total Profit:</h5>
-                            <h3 class="text-primary" style="font-family: sans-serif;">
-                                $<?php echo number_format($income_total, 2); ?>
-                            </h3>
-                        </div>
-                    </div>
+                    <!--Sorting buttons-->
+                    <form method="GET" action="transaction.php" class="filter-form">
+                        <label for="sort">Sort By:</label>
+                        <select name="sort" id="sort">
+                            <option value="">-- Select --</option>
+                            <option value="amount_asc" <?= isset($_GET['sort']) && $_GET['sort'] === 'amount_asc' ? 'selected' : '' ?>>Amount (Low to High)</option>
+                            <option value="amount_desc" <?= isset($_GET['sort']) && $_GET['sort'] === 'amount_desc' ? 'selected' : '' ?>>Amount (High to Low)</option>
+                            <option value="category" <?= isset($_GET['sort']) && $_GET['sort'] === 'category' ? 'selected' : '' ?>>Category</option>
+                            <option value="type" <?= isset($_GET['sort']) && $_GET['sort'] === 'type' ? 'selected' : '' ?>>
+                                Type
+                            </option>
+                        </select>
 
-                    <!-- Total Expenses -->
-                    <div class="col-md-4">
-                        <div class="card text-center p-3">
-                            <h5>Total Expenses:</h5>
-                            <h3 class="text-danger" style="font-family: sans-serif;">
-                                $<?php echo number_format($expense_total, 2); ?>
-                            </h3>
-                        </div>
-                    </div>
-                </div>
+                        <label for="start_date">Start Date:</label>
+                        <input type="date" name="start_date" id="start_date" value="<?= $_GET['start_date'] ?? '' ?>">
 
-                <!-- Buttons aligned to the right -->
-                <div class="btn-container">
-                    <button class="btn btn-income" data-bs-toggle="modal" data-bs-target="#incomeModal">Income</button>
-                    <button class="btn btn-expenses" data-bs-toggle="modal"
-                        data-bs-target="#expensesModal">Expenses</button>
-                    <form action="transaction.php" method="POST" style="display:inline;">
-                        <button class="btn btn-undo" name="undo" type="submit">Undo</button>
+                        <label for="end_date">End Date:</label>
+                        <input type="date" name="end_date" id="end_date" value="<?= $_GET['end_date'] ?? '' ?>">
+
+                        <button type="submit">Apply</button>
                     </form>
+
+                    <div class="btn-container">
+                        <button class="btn btn-income" data-bs-toggle="modal"
+                            data-bs-target="#incomeModal">Income</button>
+                        <button class="btn btn-expenses" data-bs-toggle="modal"
+                            data-bs-target="#expensesModal">Expenses</button>
+                        <form action="transaction.php" method="POST" style="display:inline;">
+                            <button class="btn btn-undo" name="undo" type="submit">Undo</button>
+                        </form>
+                    </div>
                 </div>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Category</th>
+                            <th>Type</th>
+                            <th>Amount</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (count($transactions) > 0): ?>
+                            <?php foreach ($transactions as $transaction): ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($transaction['category']); ?></td>
+                                    <td><?php echo htmlspecialchars($transaction['type']); ?></td>
+                                    <td><?php echo htmlspecialchars($transaction['amount']); ?></td>
+                                    <td><?php echo htmlspecialchars($transaction['created_at']); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr>
+                                <td colspan="4">No transactions available.</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
 
                 <!-- Income Modal -->
                 <div class="modal fade" id="incomeModal" tabindex="-1" aria-labelledby="incomeModalLabel"
@@ -334,12 +419,6 @@ foreach ($expense_data as $row) {
                             </div>
                         </div>
                     </div>
-                </div>
-
-                <!-- Chart -->
-                <div class="card chart-container">
-                    <h3>Expenses Chart</h3>
-                    <canvas id="myPieChart" width="400" height="400"></canvas>
                 </div>
             </div>
         </div>

@@ -77,6 +77,7 @@ $expense_data = fetchData($pdo, $query_expenses_category, $params_expenses_categ
 </head>
 
 <body>
+
     <div class="d-flex">
         <!-- Sidebar -->
         <div class="sidebar">
@@ -84,7 +85,6 @@ $expense_data = fetchData($pdo, $query_expenses_category, $params_expenses_categ
             <a href="dashboard.php" class="active">Dashboard</a>
             <a href="transaction.php">Transactions</a>
         </div>
-
         <!-- Main Content -->
         <div class="flex-grow-1">
             <!-- Header -->

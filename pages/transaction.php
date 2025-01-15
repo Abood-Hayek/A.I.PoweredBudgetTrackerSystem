@@ -12,12 +12,19 @@ if (!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 
+// Get filter and sorting parameters
 $sort = $_GET['sort'] ?? '';
+$category = $_GET['category'] ?? ''; // Default to empty if not set
 $start_date = $_GET['start_date'] ?? '';
 $end_date = $_GET['end_date'] ?? '';
 
 // Build query for transactions
 $query_transactions = "SELECT * FROM transactions WHERE user_id = :user_id";
+
+// Add category filter if selected
+if (!empty($category)) {
+    $query_transactions .= " AND category = :category";
+}
 
 // Add date range filter if selected
 if (!empty($start_date) && !empty($end_date)) {
@@ -25,34 +32,67 @@ if (!empty($start_date) && !empty($end_date)) {
 }
 
 // Add sorting
-switch ($sort) {
-    case 'amount_asc':
-        $query_transactions .= " ORDER BY amount ASC";
-        break;
-    case 'amount_desc':
-        $query_transactions .= " ORDER BY amount DESC";
-        break;
-    case 'category':
-        $query_transactions .= " ORDER BY category ASC";
-        break;
-    case 'type':
-        $query_transactions .= " ORDER BY type ASC";
-        break;
-    default:
-        $query_transactions .= " ORDER BY created_at DESC";
-}
+$sorting_options = [
+    'amount_asc' => 'amount ASC',
+    'amount_desc' => 'amount DESC',
+    'category' => 'category ASC',
+    'type' => 'type ASC',
+    'date_asc' => 'created_at ASC',
+    'date_desc' => 'created_at DESC',
+];
+
+$query_transactions .= isset($sorting_options[$sort]) ? " ORDER BY {$sorting_options[$sort]}" : " ORDER BY created_at DESC";
+
+// Pagination configuration
+$per_page = 10;
+$page = isset($_GET['page']) ? (int) $_GET['page'] : 1; // Default to 1 if no page is provided
+$offset = ($page - 1) * $per_page; // Calculate the offset
+
+// Add LIMIT and OFFSET for pagination
+$query_transactions .= " LIMIT $per_page OFFSET $offset";
 
 // Prepare query parameters
 $params_transactions = ['user_id' => $user_id];
+
+// Add the category filter parameter if a category is selected
+if (!empty($category)) {
+    $params_transactions['category'] = $category;
+}
+
+// Add date range parameters if specified
 if (!empty($start_date) && !empty($end_date)) {
     $params_transactions['start_date'] = $start_date;
     $params_transactions['end_date'] = $end_date;
 }
 
-// Fetch transactions
+// Fetch the transactions based on the final query
 $transactions = fetchData($pdo, $query_transactions, $params_transactions);
 
-//Income and expense handling
+// Fetch total count of transactions for pagination
+$query_count = "SELECT COUNT(*) AS total FROM transactions WHERE user_id = :user_id";
+if (!empty($category)) {
+    $query_count .= " AND category = :category";
+}
+if (!empty($start_date) && !empty($end_date)) {
+    $query_count .= " AND created_at BETWEEN :start_date AND :end_date";
+}
+
+$stmt_count = $pdo->prepare($query_count);
+$stmt_count->bindParam(':user_id', $user_id);
+if (!empty($category)) {
+    $stmt_count->bindParam(':category', $category);
+}
+if (!empty($start_date) && !empty($end_date)) {
+    $stmt_count->bindParam(':start_date', $start_date);
+    $stmt_count->bindParam(':end_date', $end_date);
+}
+$stmt_count->execute();
+$total_transactions = $stmt_count->fetch(PDO::FETCH_ASSOC)['total'];
+
+// Calculate total number of pages
+$total_pages = ceil($total_transactions / $per_page);
+
+// Handle income/expense actions (your existing logic)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['undo'])) {
         $result = handleUndo($pdo, $user_id);
@@ -60,79 +100,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header("Location: transaction.php");
             exit();
         } else {
-            echo $result;  // Show error if any
+            echo $result;
         }
     } else {
-        // Handle income/expense form submission
         $amount = filter_var($_POST['amount'], FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
         $category = filter_var($_POST['category'], FILTER_SANITIZE_STRING);
         $type = $_POST['type'];
 
-        if ($amount <= 0) {
-            echo "Error: Amount must be a positive number.";
-            exit();
-        }
-
-        $result = handleTransaction($pdo, $user_id, $type, $category, $amount);
-        if ($result === true) {
-            header("Location: transaction.php");
-            exit();
+        if ($amount > 0) {
+            $result = handleTransaction($pdo, $user_id, $type, $category, $amount);
+            if ($result === true) {
+                header("Location: transaction.php");
+                exit();
+            } else {
+                echo $result;
+            }
         } else {
-            echo $result;  // Show error if any
+            echo "Error: Amount must be a positive number.";
         }
     }
 }
 
-// Query the database for income, expenses, and balance
-$income_total = 0;
-$expense_total = 0;
-$balance = 0;
+// Fetch categorized income and expense data
+$query_category_totals = "
+    SELECT category, type, SUM(amount) AS total 
+    FROM transactions 
+    WHERE user_id = :user_id 
+    GROUP BY category, type";
 
-// Get total income
-$query = "SELECT SUM(amount) AS total_income FROM transactions WHERE user_id = :user_id AND type = 'income'";
-$stmt = $pdo->prepare($query);
-$stmt->bindParam(':user_id', $user_id);
-$stmt->execute();
-$income = $stmt->fetch(PDO::FETCH_ASSOC);
-$income_total = $income['total_income'] ? $income['total_income'] : 0; // Default to 0 if empty
+$stmt_category_totals = $pdo->prepare($query_category_totals);
+$stmt_category_totals->bindParam(':user_id', $user_id);
+$stmt_category_totals->execute();
+$category_data = $stmt_category_totals->fetchAll(PDO::FETCH_ASSOC);
 
-// Get total expenses
-$query = "SELECT SUM(amount) AS total_expenses FROM transactions WHERE user_id = :user_id AND type = 'expense'";
-$stmt = $pdo->prepare($query);
-$stmt->bindParam(':user_id', $user_id);
-$stmt->execute();
-$expense = $stmt->fetch(PDO::FETCH_ASSOC);
-$expense_total = $expense['total_expenses'] ? $expense['total_expenses'] : 0; // Default to 0 if empty
+$income_data = array_filter($category_data, fn($row) => $row['type'] === 'income');
+$expense_data = array_filter($category_data, fn($row) => $row['type'] === 'expense');
 
-// Calculate balance
-$balance = $income_total - $expense_total;
-
-$query_income = "SELECT category, SUM(amount) AS total_income FROM transactions WHERE user_id = :user_id AND type = 'income' GROUP BY category";
-$stmt_income = $pdo->prepare($query_income);
-$stmt_income->bindParam(':user_id', $user_id);
-$stmt_income->execute();
-$income_data = $stmt_income->fetchAll(PDO::FETCH_ASSOC);
-
-// Database query to get expense data
-$query_expenses = "SELECT category, SUM(amount) AS total_expenses FROM transactions WHERE user_id = :user_id AND type = 'expense' GROUP BY category";
-$stmt_expenses = $pdo->prepare($query_expenses);
-$stmt_expenses->bindParam(':user_id', $user_id);
-$stmt_expenses->execute();
-$expense_data = $stmt_expenses->fetchAll(PDO::FETCH_ASSOC);
-
-// Prepare data for JavaScript
-$expense_categories = [];
-$income_categories = [];
-
-foreach ($income_data as $row) {
-    $income_categories[] = $row['category'];
-    $income_totals[] = $row['total_income'];
-}
-
-foreach ($expense_data as $row) {
-    $expense_categories[] = $row['category'];
-    $expense_totals[] = $row['total_expenses'];
-}
+$income_categories = array_column($income_data, 'category');
+$income_totals = array_column($income_data, 'total');
+$expense_categories = array_column($expense_data, 'category');
+$expense_totals = array_column($expense_data, 'total');
 ?>
 
 
@@ -175,10 +182,11 @@ foreach ($expense_data as $row) {
             overflow: hidden;
         }
 
+
         .filter-form {
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 20px;
             margin-bottom: 20px;
         }
 
@@ -193,19 +201,51 @@ foreach ($expense_data as $row) {
             border-radius: 5px;
         }
 
-        .filter-form button {
+
+        .filter-form .form-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .apply-btn {
             background-color: #1ABC9C;
             color: white;
             border: none;
             padding: 5px 10px;
             border-radius: 5px;
             cursor: pointer;
+            width: auto;
+            /* Don't stretch the button */
         }
 
-        .filter-form button:hover {
+        .apply-btn:hover {
             background-color: #148F77;
         }
 
+        .reset-btn {
+            background-color: transparent;
+            color: #1ABC9C;
+            border: 1px solid #1ABC9C;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: auto;
+        }
+
+        a {
+            text-decoration: none;
+        }
+
+        .sorter {
+            text-decoration: none;
+            color: #007bff;
+            margin-left: 5px;
+            font-size: 12px;
+        }
+
+        .sorter:hover {
+            color: #0056b3;
+        }
 
         /* Button Container */
         .btn-container {
@@ -230,9 +270,14 @@ foreach ($expense_data as $row) {
         }
 
         .btn-undo {
-            border: 1px solid #333;
-            color: #333;
             background-color: transparent;
+            color: #1ABC9C;
+            border: 1px solid #1ABC9C;
+        }
+
+        .btn-undo {
+            background-color: #1ABC9C;
+            color: white;
         }
 
         /* Modal Styles */
@@ -256,6 +301,25 @@ foreach ($expense_data as $row) {
         input[type="number"]::-webkit-inner-spin-button {
             -webkit-appearance: none;
             margin: 0;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .pagination a {
+            text-decoration: none;
+            padding: 5px 10px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+
+        .pagination a:hover {
+            background-color: #0056b3;
         }
     </style>
 </head>
@@ -289,24 +353,36 @@ foreach ($expense_data as $row) {
 
                     <!--Sorting buttons-->
                     <form method="GET" action="transaction.php" class="filter-form">
-                        <label for="sort">Sort By:</label>
-                        <select name="sort" id="sort">
-                            <option value="">-- Select --</option>
-                            <option value="amount_asc" <?= isset($_GET['sort']) && $_GET['sort'] === 'amount_asc' ? 'selected' : '' ?>>Amount (Low to High)</option>
-                            <option value="amount_desc" <?= isset($_GET['sort']) && $_GET['sort'] === 'amount_desc' ? 'selected' : '' ?>>Amount (High to Low)</option>
-                            <option value="category" <?= isset($_GET['sort']) && $_GET['sort'] === 'category' ? 'selected' : '' ?>>Category</option>
-                            <option value="type" <?= isset($_GET['sort']) && $_GET['sort'] === 'type' ? 'selected' : '' ?>>
-                                Type
-                            </option>
-                        </select>
+                        <div class="form-group">
+                            <label for="category">Sort By:</label>
+                            <select class="form-select" id="category" name="category" required>
+                                <option value="">-- Select Category --</option>
+                                <option value="groceries" <?= isset($_GET['category']) && $_GET['category'] === 'groceries' ? 'selected' : '' ?>>Groceries</option>
+                                <option value="rent" <?= isset($_GET['category']) && $_GET['category'] === 'rent' ? 'selected' : '' ?>>Rent</option>
+                                <option value="clothing" <?= isset($_GET['category']) && $_GET['category'] === 'clothing' ? 'selected' : '' ?>>Clothing</option>
+                                <option value="food" <?= isset($_GET['category']) && $_GET['category'] === 'food' ? 'selected' : '' ?>>Food</option>
+                                <option value="transportation" <?= isset($_GET['category']) && $_GET['category'] === 'transportation' ? 'selected' : '' ?>>Transportation</option>
+                                <option value="phoneBill" <?= isset($_GET['category']) && $_GET['category'] === 'phoneBill' ? 'selected' : '' ?>>Phone Bill</option>
+                                <option value="selfCare" <?= isset($_GET['category']) && $_GET['category'] === 'selfCare' ? 'selected' : '' ?>>Self-Care</option>
+                                <option value="miscellaneous" <?= isset($_GET['category']) && $_GET['category'] === 'miscellaneous' ? 'selected' : '' ?>>Miscellaneous</option>
+                            </select>
+                        </div>
 
-                        <label for="start_date">Start Date:</label>
-                        <input type="date" name="start_date" id="start_date" value="<?= $_GET['start_date'] ?? '' ?>">
+                        <div class="form-group">
+                            <label for="start_date">Start Date:</label>
+                            <input type="date" name="start_date" id="start_date"
+                                value="<?= $_GET['start_date'] ?? '' ?>">
+                        </div>
 
-                        <label for="end_date">End Date:</label>
-                        <input type="date" name="end_date" id="end_date" value="<?= $_GET['end_date'] ?? '' ?>">
+                        <div class="form-group">
+                            <label for="end_date">End Date:</label>
+                            <input type="date" name="end_date" id="end_date" value="<?= $_GET['end_date'] ?? '' ?>">
+                        </div>
 
-                        <button type="submit">Apply</button>
+                        <div class="form-actions">
+                            <button type="submit" class="apply-btn">Apply</button>
+                            <button type="button" class="reset-btn" onclick="resetForm()">Reset</button>
+                        </div>
                     </form>
 
                     <div class="btn-container">
@@ -324,8 +400,20 @@ foreach ($expense_data as $row) {
                         <tr>
                             <th>Category</th>
                             <th>Type</th>
-                            <th>Amount</th>
-                            <th>Date</th>
+                            <th>
+                                Amount
+                                <span class="sorter">
+                                    <a href="?sort=amount_asc"> &#9650; <!-- Up Arrow --> </a>
+                                    <a href="?sort=amount_desc"> &#9660; <!-- Down Arrow --> </a>
+                                </span>
+                            </th>
+                            <th style="justify-content: space-between;">
+                                Date
+                                <span class="sorter">
+                                    <a href="?sort=date_asc"> &#9650; <!-- Up Arrow --> </a>
+                                    <a href="?sort=date_desc"> &#9660; <!-- Down Arrow --> </a>
+                                </span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
@@ -345,7 +433,12 @@ foreach ($expense_data as $row) {
                         <?php endif; ?>
                     </tbody>
                 </table>
-
+                <div class="pagination">
+                    <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                        <a
+                            href="?page=<?= $i ?>&category=<?= htmlspecialchars($category) ?>&sort=<?= htmlspecialchars($sort) ?>&start_date=<?= htmlspecialchars($start_date) ?>&end_date=<?= htmlspecialchars($end_date) ?>"><?= $i ?></a>
+                    <?php endfor; ?>
+                </div>
                 <!-- Income Modal -->
                 <div class="modal fade" id="incomeModal" tabindex="-1" aria-labelledby="incomeModalLabel"
                     aria-hidden="true">
@@ -425,6 +518,20 @@ foreach ($expense_data as $row) {
     </div>
 
     <script>
+        function resetForm() {
+            // Reset form fields
+            document.querySelector('.filter-form').reset();
+
+            // Remove the query parameters from the URL to reset the filters
+            const url = new URL(window.location.href);
+            url.searchParams.delete('category');
+            url.searchParams.delete('start_date');
+            url.searchParams.delete('end_date');
+
+            // Reload the page without the filters (URL reset)
+            window.location.href = url.toString();
+        }
+
         document.addEventListener("DOMContentLoaded", function () {
             // Data passed from PHP to JavaScript
             const expenseCategories = <?php echo json_encode($expense_categories); ?>;
@@ -445,14 +552,14 @@ foreach ($expense_data as $row) {
             };
 
             const expenseColors = {
-                groceries: "#36d555",
-                rent: "#2E8B57",
-                clothing: "#FFD700",
-                food: "#f6472b",
-                transportation: "#060118",
+                groceries: "#35f238",
+                rent: "#5446ff",
+                clothing: "#f23582",
+                food: "#f23538",
+                transportation: "#0b0047",
                 phoneBill: "#00BFFF",
-                selfCare: "#c623cd",
-                miscellaneous: "#f2ca35"
+                selfCare: "#35F295",
+                miscellaneous: "#F2DE35"
             };
 
             const backgroundColors = expenseCategories.map(category =>
@@ -519,8 +626,6 @@ foreach ($expense_data as $row) {
             document.head.appendChild(style);
         });
     </script>
-
-
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>

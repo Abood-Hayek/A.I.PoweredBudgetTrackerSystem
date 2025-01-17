@@ -92,8 +92,9 @@ $total_transactions = $stmt_count->fetch(PDO::FETCH_ASSOC)['total'];
 // Calculate total number of pages
 $total_pages = ceil($total_transactions / $per_page);
 
-// Handle income/expense actions (your existing logic)
+// Handle income/expense actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Handle Undo
     if (isset($_POST['undo'])) {
         $result = handleUndo($pdo, $user_id);
         if ($result === true) {
@@ -102,13 +103,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             echo $result;
         }
-    } else {
+    }
+
+    // Handle Report Generation
+    elseif (isset($_POST['print'])) {
+        generatePDFReport($transactions, $sort, $category, $start_date, $end_date);
+    }
+
+    // Handle New Transaction
+    elseif (isset($_POST['amount'], $_POST['category'], $_POST['type'])) {
         $amount = filter_var($_POST['amount'], FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
         $category = filter_var($_POST['category'], FILTER_SANITIZE_STRING);
         $type = $_POST['type'];
 
         if ($amount > 0) {
-            $result = handleTransaction($pdo, $user_id, $type, $category, $amount);
+            $transaction_id = getNextTransactionID($pdo, $user_id);
+
+            $result = handleTransaction($pdo, $user_id, $transaction_id, $type, $category, $amount);
             if ($result === true) {
                 header("Location: transaction.php");
                 exit();
@@ -119,7 +130,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo "Error: Amount must be a positive number.";
         }
     }
+
+    // Fallback for Missing or Invalid Input
+    else {
+        echo "Error: Invalid or incomplete form submission.";
+    }
 }
+
 
 // Fetch categorized income and expense data
 $query_category_totals = "
@@ -236,17 +253,6 @@ $expense_totals = array_column($expense_data, 'total');
             text-decoration: none;
         }
 
-        .sorter {
-            text-decoration: none;
-            color: #007bff;
-            margin-left: 5px;
-            font-size: 12px;
-        }
-
-        .sorter:hover {
-            color: #0056b3;
-        }
-
         /* Button Container */
         .btn-container {
             display: flex;
@@ -269,15 +275,35 @@ $expense_totals = array_column($expense_data, 'total');
             border: none;
         }
 
-        .btn-undo {
-            background-color: transparent;
-            color: #1ABC9C;
-            border: 1px solid #1ABC9C;
-        }
 
         .btn-undo {
+            background-color: white;
+            color: #1ABC9C;
+            border: 1px solid #1ABC9C;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .btn-undo:hover {
             background-color: #1ABC9C;
             color: white;
+        }
+
+        .btn-print {
+            background-color: #0d6efd;
+            color: white;
+            border: 1px solid #0d6efd;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .btn-print:hover {
+            background-color: white;
+            color: #0d6efd;
         }
 
         /* Modal Styles */
@@ -391,7 +417,8 @@ $expense_totals = array_column($expense_data, 'total');
                         <button class="btn btn-expenses" data-bs-toggle="modal"
                             data-bs-target="#expensesModal">Expenses</button>
                         <form action="transaction.php" method="POST" style="display:inline;">
-                            <button class="btn btn-undo" name="undo" type="submit">Undo</button>
+                            <button class="btn-undo" name="undo" type="submit">Undo</button>
+                            <button class="btn-print" type="submit" name="print">Print</button>
                         </form>
                     </div>
                 </div>

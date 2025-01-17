@@ -16,30 +16,20 @@ if (!isset($_SESSION['user_id'])) {
 // Get user information from the session (if needed)
 $user_id = $_SESSION['user_id']; // Get the user ID from session
 
-// Get total income
-$query_income = "SELECT SUM(amount) AS total_income FROM transactions WHERE user_id = :user_id AND type = 'income'";
-$params_income = ['user_id' => $user_id];
-$income_result = fetchData($pdo, $query_income, $params_income);
-$income_total = $income_result[0]['total_income'] ? $income_result[0]['total_income'] : 0;
+// Calculate income, expenses, and balance
+$query_totals = "SELECT 
+    SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) AS total_income,
+    SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) AS total_expenses 
+    FROM transactions WHERE user_id = :user_id";
 
-// Get total expenses
-$query_expenses = "SELECT SUM(amount) AS total_expenses FROM transactions WHERE user_id = :user_id AND type = 'expense'";
-$params_expenses = ['user_id' => $user_id];
-$expense_result = fetchData($pdo, $query_expenses, $params_expenses);
-$expense_total = $expense_result[0]['total_expenses'] ? $expense_result[0]['total_expenses'] : 0;
+$stmt = $pdo->prepare($query_totals);
+$stmt->bindParam(':user_id', $user_id);
+$stmt->execute();
+$totals = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Calculate balance
+$income_total = $totals['total_income'] ?? 0;
+$expense_total = $totals['total_expenses'] ?? 0;
 $balance = $income_total - $expense_total;
-
-// Get income by category
-$query_income_category = "SELECT category, SUM(amount) AS total_income FROM transactions WHERE user_id = :user_id AND type = 'income' GROUP BY category";
-$params_income_category = ['user_id' => $user_id];
-$income_data = fetchData($pdo, $query_income_category, $params_income_category);
-
-// Get expenses by category
-$query_expenses_category = "SELECT category, SUM(amount) AS total_expenses FROM transactions WHERE user_id = :user_id AND type = 'expense' GROUP BY category";
-$params_expenses_category = ['user_id' => $user_id];
-$expense_data = fetchData($pdo, $query_expenses_category, $params_expenses_category);
 ?>
 
 
@@ -62,7 +52,6 @@ $expense_data = fetchData($pdo, $query_expenses_category, $params_expenses_categ
             border-bottom: 1px solid #ddd;
         }
 
-        /* Chart Placeholder */
         .chart-placeholder {
             height: 300px;
             background: #e6f7ff;

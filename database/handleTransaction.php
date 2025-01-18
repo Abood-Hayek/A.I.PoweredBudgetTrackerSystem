@@ -62,24 +62,43 @@ function generatePDFReport($transactions, $sort, $category, $start_date, $end_da
     $pdf->AddPage();
     $pdf->SetFont('Arial', 'B', 16);
 
-    // Set custom colors based on theme
+    // Custom Colors Based on Theme
     $headerColor = [26, 82, 118];  // Deep Blue
     $rowColor1 = [255, 255, 255]; // White
-    $rowColor2 = [230, 245, 241]; // Light Green 
+    $rowColor2 = [230, 245, 241]; // Light Green
     $textColor = [21, 67, 96];    // Dark Text Blue
     $titleColor = [26, 188, 156]; // Green
 
     // Title Section
-    $pdf->SetFont('Arial', 'B', 16);
     $pdf->SetTextColor($headerColor[0], $headerColor[1], $headerColor[2]);
     $pdf->Cell(190, 10, 'Transaction Report', 0, 1, 'C');
     $pdf->Ln(5);
 
+    // Calculate totals
+    $totalIncome = 0;
+    $totalExpenses = 0;
+    foreach ($transactions as $transaction) {
+        if ($transaction['type'] === 'income') {
+            $totalIncome += $transaction['amount'];
+        } elseif ($transaction['type'] === 'expense') {
+            $totalExpenses += $transaction['amount'];
+        }
+    }
+    $totalBalance = $totalIncome - $totalExpenses;
+
     // Summary Section
-    $pdf->SetFont('Arial', '', 12);
     $pdf->SetTextColor($textColor[0], $textColor[1], $textColor[2]);
     $pdf->Cell(50, 8, 'Generated On:', 0, 0);
     $pdf->Cell(50, 8, date('Y-m-d H:i:s'), 0, 1);
+    $pdf->Cell(50, 8, 'Total Balance:', 0, 0);
+    $pdf->Cell(50, 8, '$' . number_format($totalBalance, 2), 0, 1);
+    $pdf->Cell(50, 8, 'Total Income:', 0, 0);
+    $pdf->SetTextColor($titleColor[0], $titleColor[1], $titleColor[2]);
+    $pdf->Cell(50, 8, '$' . number_format($totalIncome, 2), 0, 1);
+    $pdf->SetTextColor($textColor[0], $textColor[1], $textColor[2]);
+    $pdf->Cell(50, 8, 'Total Expenses:', 0, 0);
+    $pdf->SetTextColor(255, 0, 0); // Red
+    $pdf->Cell(50, 8, '$' . number_format($totalExpenses, 2), 0, 1);
     $pdf->Ln(5);
 
     // Table Header
@@ -87,7 +106,7 @@ function generatePDFReport($transactions, $sort, $category, $start_date, $end_da
     $pdf->SetTextColor(255, 255, 255); // White Text
     $pdf->SetFont('Arial', 'B', 12);
 
-    $pdf->Cell(30, 10, 'Transaction ID', 1, 0, 'C', true);
+    $pdf->Cell(30, 10, 'Trans-ID', 1, 0, 'C', true);
     $pdf->Cell(30, 10, 'Type', 1, 0, 'C', true);
     $pdf->Cell(50, 10, 'Category', 1, 0, 'C', true);
     $pdf->Cell(30, 10, 'Amount', 1, 0, 'C', true);
@@ -120,6 +139,6 @@ function generatePDFReport($transactions, $sort, $category, $start_date, $end_da
     $pdf->Cell(190, 10, 'Thank you for using our budget tracking system!', 0, 1, 'C');
 
     // Output the PDF
-    $pdf->Output('D', 'Transaction_Report.pdf'); // Forces a download with the name 'Transaction_Report.pdf'
+    $pdf->Output('D', 'Transaction_Report.pdf'); 
 }
 ?>

@@ -14,21 +14,30 @@ $user_id = $_SESSION['user_id'];
 
 // Get filter and sorting parameters
 $sort = $_GET['sort'] ?? '';
-$category = $_GET['category'] ?? ''; // Default to empty if not set
+$category = $_GET['category'] ?? '';
 $start_date = $_GET['start_date'] ?? '';
 $end_date = $_GET['end_date'] ?? '';
 
+// Pagination configuration
+$per_page = intval($_GET['per_page'] ?? 10);
+$page = intval($_GET['page'] ?? 1); // Default to 1 if no page is provided
+$offset = ($page - 1) * $per_page;
+
 // Build query for transactions
 $query_transactions = "SELECT * FROM transactions WHERE user_id = :user_id";
+$params_transactions = ['user_id' => $user_id];
 
 // Add category filter if selected
 if (!empty($category)) {
     $query_transactions .= " AND category = :category";
+    $params_transactions['category'] = $category;
 }
 
 // Add date range filter if selected
 if (!empty($start_date) && !empty($end_date)) {
     $query_transactions .= " AND created_at BETWEEN :start_date AND :end_date";
+    $params_transactions['start_date'] = $start_date;
+    $params_transactions['end_date'] = $end_date;
 }
 
 // Add sorting
@@ -43,29 +52,10 @@ $sorting_options = [
 
 $query_transactions .= isset($sorting_options[$sort]) ? " ORDER BY {$sorting_options[$sort]}" : " ORDER BY created_at DESC";
 
-// Pagination configuration
-$per_page = 10;
-$page = isset($_GET['page']) ? (int) $_GET['page'] : 1; // Default to 1 if no page is provided
-$offset = ($page - 1) * $per_page; // Calculate the offset
-
-// Add LIMIT and OFFSET for pagination
+// Add pagination
 $query_transactions .= " LIMIT $per_page OFFSET $offset";
 
-// Prepare query parameters
-$params_transactions = ['user_id' => $user_id];
-
-// Add the category filter parameter if a category is selected
-if (!empty($category)) {
-    $params_transactions['category'] = $category;
-}
-
-// Add date range parameters if specified
-if (!empty($start_date) && !empty($end_date)) {
-    $params_transactions['start_date'] = $start_date;
-    $params_transactions['end_date'] = $end_date;
-}
-
-// Fetch the transactions based on the final query
+// Fetch transactions
 $transactions = fetchData($pdo, $query_transactions, $params_transactions);
 
 // Fetch total count of transactions for pagination
@@ -94,7 +84,6 @@ $total_pages = ceil($total_transactions / $per_page);
 
 // Handle income/expense actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Handle Undo
     if (isset($_POST['undo'])) {
         $result = handleUndo($pdo, $user_id);
         if ($result === true) {
@@ -103,15 +92,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             echo $result;
         }
-    }
-
-    // Handle Report Generation
-    elseif (isset($_POST['print'])) {
+    } elseif (isset($_POST['print'])) {
         generatePDFReport($transactions, $sort, $category, $start_date, $end_date);
-    }
-
-    // Handle New Transaction
-    elseif (isset($_POST['amount'], $_POST['category'], $_POST['type'])) {
+    } elseif (isset($_POST['amount'], $_POST['category'], $_POST['type'])) {
         $amount = filter_var($_POST['amount'], FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
         $category = filter_var($_POST['category'], FILTER_SANITIZE_STRING);
         $type = $_POST['type'];
@@ -129,14 +112,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             echo "Error: Amount must be a positive number.";
         }
-    }
-
-    // Fallback for Missing or Invalid Input
-    else {
+    } else {
         echo "Error: Invalid or incomplete form submission.";
     }
 }
-
 
 // Fetch categorized income and expense data
 $query_category_totals = "
@@ -185,45 +164,6 @@ $expense_totals = array_column($expense_data, 'total');
             padding: 20px;
         }
 
-        /* Chart Container */
-        .chart-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 450px;
-            padding: 20px;
-            margin-top: 20px;
-            margin-bottom: 20px;
-            box-sizing: border-box;
-            overflow: hidden;
-        }
-
-
-        .filter-form {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
-
-        .filter-form label {
-            font-weight: bold;
-        }
-
-        .filter-form select,
-        .filter-form input {
-            padding: 5px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-
-
-        .filter-form .form-actions {
-            display: flex;
-            gap: 10px;
-        }
-
         .apply-btn {
             background-color: #1ABC9C;
             color: white;
@@ -232,12 +172,14 @@ $expense_totals = array_column($expense_data, 'total');
             border-radius: 5px;
             cursor: pointer;
             width: auto;
-            /* Don't stretch the button */
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
 
         .apply-btn:hover {
-            background-color: #148F77;
+            background-color: white;
+            color: #1ABC9C;
         }
+
 
         .reset-btn {
             background-color: transparent;
@@ -247,6 +189,12 @@ $expense_totals = array_column($expense_data, 'total');
             border-radius: 5px;
             cursor: pointer;
             width: auto;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .reset-btn:hover {
+            background-color: #1ABC9C;
+            color: white;
         }
 
         a {
@@ -294,7 +242,7 @@ $expense_totals = array_column($expense_data, 'total');
         .btn-print {
             background-color: #0d6efd;
             color: white;
-            border: 1px solid #0d6efd;
+            border: none;
             padding: 10px 20px;
             border-radius: 5px;
             cursor: pointer;
@@ -355,8 +303,13 @@ $expense_totals = array_column($expense_data, 'total');
         <!-- Sidebar -->
         <div class="sidebar">
             <h4>A.I Budget Tracker</h4>
-            <a href="dashboard.php">Dashboard</a>
-            <a href="transaction.php" class="active">Transactions</a>
+            <a href="dashboard.php">
+                <img class="sidebar-icons" src="../assets/icons/dashboard_icon.svg" alt="Dashboard Icon">Dashboard
+            </a>
+            <a href="transaction.php" class="active">
+                <img class="sidebar-icons" src="../assets/icons/transaction_icon.svg"
+                    alt="Transactions Icon">Transactions
+            </a>
         </div>
 
         <!-- Main Content -->
@@ -367,9 +320,15 @@ $expense_totals = array_column($expense_data, 'total');
                 <a href="logout.php" class="btn btn-outline-primary">Log Out</a>
             </div>
 
-            <div class="card chart-container">
+            <div class="card chart-container" style="margin: 40px;">
                 <h3>Expenses Chart</h3>
-                <canvas id="myPieChart" width="400" height="400"></canvas>
+                <?php if (count($transactions) > 0): ?>
+                    <canvas id="myPieChart" width="400" height="400"></canvas>
+                <?php else: ?>
+                    <div class="no-transactions">
+                        <p>No transactions have been added yet. Add your income or expenses to see the chart!</p>
+                    </div>
+                <?php endif; ?>
             </div>
             <!-- Main Section -->
             <div class="container my-4">
@@ -381,7 +340,7 @@ $expense_totals = array_column($expense_data, 'total');
                     <form method="GET" action="transaction.php" class="filter-form">
                         <div class="form-group">
                             <label for="category">Sort By:</label>
-                            <select class="form-select" id="category" name="category" required>
+                            <select class="form-select" id="category" name="category">
                                 <option value="">-- Select Category --</option>
                                 <option value="groceries" <?= isset($_GET['category']) && $_GET['category'] === 'groceries' ? 'selected' : '' ?>>Groceries</option>
                                 <option value="rent" <?= isset($_GET['category']) && $_GET['category'] === 'rent' ? 'selected' : '' ?>>Rent</option>
@@ -455,7 +414,7 @@ $expense_totals = array_column($expense_data, 'total');
                             <?php endforeach; ?>
                         <?php else: ?>
                             <tr>
-                                <td colspan="4">No transactions available.</td>
+                                <td colspan="4" style="text-align: center;">No transactions available.</td>
                             </tr>
                         <?php endif; ?>
                     </tbody>
@@ -555,9 +514,10 @@ $expense_totals = array_column($expense_data, 'total');
             url.searchParams.delete('start_date');
             url.searchParams.delete('end_date');
 
-            // Reload the page without the filters (URL reset)
+            // Reload the page with the filters removed
             window.location.href = url.toString();
         }
+
 
         document.addEventListener("DOMContentLoaded", function () {
             // Data passed from PHP to JavaScript
@@ -639,17 +599,6 @@ $expense_totals = array_column($expense_data, 'total');
                     }
                 }
             });
-
-            // Add inline CSS for legend styling
-            const style = document.createElement('style');
-            style.innerHTML = `
-            .chartjs-legend {
-                display: flex !important;
-                justify-content: center;
-                flex-wrap: nowrap;
-                gap: 15px;
-                overflow-x: auto;
-            }`;
             document.head.appendChild(style);
         });
     </script>

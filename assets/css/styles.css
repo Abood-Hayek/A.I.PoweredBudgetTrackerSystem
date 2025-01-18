@@ -1,4 +1,6 @@
 /* Google Fonts */
+
+
 @import url('https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@700&family=Raleway:ital,wght@0,100..900;1,100..900&display=swap');
 
 /* Raleway Font */
@@ -25,11 +27,15 @@ body.raleway {
     color: white;
     font-weight: bold;
     text-decoration: none;
-    display: block;
+    display: flex;
+    align-items: center;
     margin-top: 20px;
     padding: 10px;
     border-radius: 5px;
     margin-bottom: 10px;
+    gap: 10px;
+    /* Gap between icon and text */
+    transition: background-color 0.3s ease;
 }
 
 .sidebar a.active,
@@ -37,9 +43,63 @@ body.raleway {
     background-color: #28c6a7;
 }
 
-/* Card */
+.sidebar-icons {
+    width: 24px;
+    height: 24px;
+}
+
 .card {
     border: none;
     border-radius: 10px;
-    box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 2px 2px 4px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Chart Container */
+.chart-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 450px;
+    padding: 20px;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.no-transactions p {
+    font-size: 18px;
+    color: #1A5276;
+    margin: 0;
+    padding: 10px;
+}
+
+#graph {
+    width: 100%;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+
+.filter-form {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.filter-form label {
+    font-weight: bold;
+}
+
+.filter-form select,
+.filter-form input {
+    padding: 5px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+
+.filter-form .form-actions {
+    display: flex;
+    gap: 10px;
 }

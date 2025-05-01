@@ -1,9 +1,9 @@
 <?php
 // Connect to the database
-$host = 'localhost'; // Replace with your database host
-$dbname = 'budgettracking'; // Replace with your database name
-$username = 'root'; // Replace with your database username
-$password = ''; // Replace with your database password
+$host = 'localhost';
+$dbname = 'budgettracking'; 
+$username = 'root';
+$password = ''; 
 
 try {
     $pdo = new PDO(dsn: "mysql:host=$host;dbname=$dbname;charset=utf8", username: $username, password: $password);

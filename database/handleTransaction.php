@@ -20,7 +20,7 @@ function handleTransaction($pdo, $user_id, $transaction_id, $type, $category, $a
 
 function handleUndo($pdo, $user_id)
 {
-    $query = "SELECT id FROM transactions WHERE user_id = :user_id ORDER BY created_at DESC LIMIT 1";
+    $query = "SELECT id FROM transactions WHERE user_id = :user_id ORDER BY date DESC LIMIT 1";
     $stmt = executeQuery($pdo, $query, ['user_id' => $user_id]);
     $transaction = $stmt ? $stmt->fetch(PDO::FETCH_ASSOC) : null;
 
@@ -127,16 +127,16 @@ function generatePDFReport($transactions, $sort, $category, $start_date, $end_da
         $pdf->Cell(30, 10, ucfirst($transaction['type']), 1, 0, 'C', $fill);
         $pdf->Cell(50, 10, ucfirst($transaction['category']), 1, 0, 'C', $fill);
         $pdf->Cell(30, 10, number_format($transaction['amount'], 2), 1, 0, 'C', $fill);
-        $pdf->Cell(50, 10, $transaction['created_at'], 1, 1, 'C', $fill);
+        $pdf->Cell(50, 10, $transaction['date'], 1, 1, 'C', $fill);
 
         $fill = !$fill; // Toggle fill
     }
 
-    // Footer Section
-    $pdf->Ln(10);
-    $pdf->SetFont('Arial', 'I', 10);
-    $pdf->SetTextColor($textColor[0], $textColor[1], $textColor[2]);
-    $pdf->Cell(190, 10, 'Thank you for using our budget tracking system!', 0, 1, 'C');
+    // // Footer Section
+    // $pdf->Ln(10);
+    // $pdf->SetFont('Arial', 'I', 10);
+    // $pdf->SetTextColor($textColor[0], $textColor[1], $textColor[2]);
+    // $pdf->Cell(190, 10, 'Thank you for using our budget tracking system!', 0, 1, 'C');
 
     // Output the PDF
     $pdf->Output('D', 'Transaction_Report.pdf'); 

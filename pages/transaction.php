@@ -35,7 +35,7 @@ if (!empty($category)) {
 
 // Add date range filter if selected
 if (!empty($start_date) && !empty($end_date)) {
-    $query_transactions .= " AND created_at BETWEEN :start_date AND :end_date";
+    $query_transactions .= " AND date BETWEEN :start_date AND :end_date";
     $params_transactions['start_date'] = $start_date;
     $params_transactions['end_date'] = $end_date;
 }
@@ -46,11 +46,11 @@ $sorting_options = [
     'amount_desc' => 'amount DESC',
     'category' => 'category ASC',
     'type' => 'type ASC',
-    'date_asc' => 'created_at ASC',
-    'date_desc' => 'created_at DESC',
+    'date_asc' => 'transaction_id ASC',
+    'date_desc' => 'transaction_id DESC',
 ];
 
-$query_transactions .= isset($sorting_options[$sort]) ? " ORDER BY {$sorting_options[$sort]}" : " ORDER BY created_at DESC";
+$query_transactions .= isset($sorting_options[$sort]) ? " ORDER BY {$sorting_options[$sort]}" : " ORDER BY transaction_id DESC";
 
 // Add pagination
 $query_transactions .= " LIMIT $per_page OFFSET $offset";
@@ -64,7 +64,7 @@ if (!empty($category)) {
     $query_count .= " AND category = :category";
 }
 if (!empty($start_date) && !empty($end_date)) {
-    $query_count .= " AND created_at BETWEEN :start_date AND :end_date";
+    $query_count .= " AND date BETWEEN :start_date AND :end_date";
 }
 
 $stmt_count = $pdo->prepare($query_count);
@@ -93,7 +93,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             echo $result;
         }
     } elseif (isset($_POST['print'])) {
-        generatePDFReport($transactions, $sort, $category, $start_date, $end_date);
+        // Remove LIMIT and OFFSET for the print report query
+        $query_transactions_for_report = "SELECT * FROM transactions WHERE user_id = :user_id";
+        $params_transactions = ['user_id' => $user_id];
+
+        if (!empty($category)) {
+            $query_transactions_for_report .= " AND category = :category";
+            $params_transactions['category'] = $category;
+        }
+
+        if (!empty($start_date) && !empty($end_date)) {
+            $query_transactions_for_report .= " AND date BETWEEN :start_date AND :end_date";
+            $params_transactions['start_date'] = $start_date;
+            $params_transactions['end_date'] = $end_date;
+        }
+
+        $query_transactions_for_report .= " ORDER BY transaction_id DESC LIMIT 20";
+
+        $transactions_for_report = fetchData($pdo, $query_transactions_for_report, $params_transactions);
+
+        generatePDFReport($transactions_for_report, $sort, $category, $start_date, $end_date);
     } elseif (isset($_POST['amount'], $_POST['category'], $_POST['type'])) {
         $amount = filter_var($_POST['amount'], FILTER_SANITIZE_NUMBER_FLOAT, FILTER_FLAG_ALLOW_FRACTION);
         $category = filter_var($_POST['category'], FILTER_SANITIZE_STRING);
@@ -112,8 +131,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             echo "Error: Amount must be a positive number.";
         }
-    } else {
-        echo "Error: Invalid or incomplete form submission.";
     }
 }
 
@@ -162,39 +179,6 @@ $expense_totals = array_column($expense_data, 'total');
         /* Main Content */
         .main-content {
             padding: 20px;
-        }
-
-        .apply-btn {
-            background-color: #1ABC9C;
-            color: white;
-            border: none;
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            width: auto;
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-
-        .apply-btn:hover {
-            background-color: white;
-            color: #1ABC9C;
-        }
-
-
-        .reset-btn {
-            background-color: transparent;
-            color: #1ABC9C;
-            border: 1px solid #1ABC9C;
-            padding: 5px 10px;
-            border-radius: 5px;
-            cursor: pointer;
-            width: auto;
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-
-        .reset-btn:hover {
-            background-color: #1ABC9C;
-            color: white;
         }
 
         a {
@@ -260,6 +244,7 @@ $expense_totals = array_column($expense_data, 'total');
             color: white;
         }
 
+
         .btn-confirm {
             background-color: #16A085;
             color: white;
@@ -267,6 +252,39 @@ $expense_totals = array_column($expense_data, 'total');
 
         .btn-cancel {
             background-color: #E74C3C;
+            color: white;
+        }
+
+        .apply-btn {
+            background-color: #1ABC9C;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: auto;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .apply-btn:hover {
+            background-color: white;
+            color: #1ABC9C;
+        }
+
+
+        .reset-btn {
+            background-color: transparent;
+            color: #1ABC9C;
+            border: 1px solid #1ABC9C;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: auto;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .reset-btn:hover {
+            background-color: #1ABC9C;
             color: white;
         }
 
@@ -320,13 +338,13 @@ $expense_totals = array_column($expense_data, 'total');
                 <a href="logout.php" class="btn btn-outline-primary">Log Out</a>
             </div>
 
-            <div class="card chart-container" style="margin: 40px;">
-                <h3>Expenses Chart</h3>
+            <div class="card chart-container" style="padding: 40px;">
+                <h3 style="padding-top: 20px">Expenses Chart</h3>
                 <?php if (count($transactions) > 0): ?>
                     <canvas id="myPieChart" width="400" height="400"></canvas>
                 <?php else: ?>
                     <div class="no-transactions">
-                        <p>No transactions have been added yet. Add your income or expenses to see the chart!</p>
+                        <p>No transactions have been added yet. Add your income and expenses to see the chart!</p>
                     </div>
                 <?php endif; ?>
             </div>
@@ -338,9 +356,9 @@ $expense_totals = array_column($expense_data, 'total');
 
                     <!--Sorting buttons-->
                     <form method="GET" action="transaction.php" class="filter-form">
-                        <div class="form-group">
+                        <div class="form-group me-3">
                             <label for="category">Sort By:</label>
-                            <select class="form-select" id="category" name="category">
+                            <select class="f-select" id="category" name="category" orm>
                                 <option value="">-- Select Category --</option>
                                 <option value="groceries" <?= isset($_GET['category']) && $_GET['category'] === 'groceries' ? 'selected' : '' ?>>Groceries</option>
                                 <option value="rent" <?= isset($_GET['category']) && $_GET['category'] === 'rent' ? 'selected' : '' ?>>Rent</option>
@@ -409,7 +427,7 @@ $expense_totals = array_column($expense_data, 'total');
                                     <td><?php echo htmlspecialchars($transaction['category']); ?></td>
                                     <td><?php echo htmlspecialchars($transaction['type']); ?></td>
                                     <td><?php echo htmlspecialchars($transaction['amount']); ?></td>
-                                    <td><?php echo htmlspecialchars($transaction['created_at']); ?></td>
+                                    <td><?php echo htmlspecialchars($transaction['date']); ?></td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
@@ -603,7 +621,6 @@ $expense_totals = array_column($expense_data, 'total');
         });
     </script>
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
